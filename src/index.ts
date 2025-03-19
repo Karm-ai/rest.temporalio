@@ -1,31 +1,56 @@
-import { WorkflowClient } from '@temporalio/client';
-import { QueryDefinition, SignalDefinition, Workflow } from '@temporalio/common';
-import express, { Router } from 'express';
-import { v4 } from 'uuid';
+import { WorkflowClient } from "@temporalio/client";
+import {
+  QueryDefinition,
+  SignalDefinition,
+  UpdateDefinition,
+  Workflow,
+} from "@temporalio/common";
+import express, { Router } from "express";
+import { v4 } from "uuid";
 
-const signalValidators = new WeakMap<SignalDefinition, Function>();
+const signalValidators = new WeakMap<SignalDefinition<any[]>, Function>();
 
 export function useValidator(signal: SignalDefinition, fn: Function): void {
   signalValidators.set(signal, fn);
 }
 
-export function createExpressMiddleware(workflows: any, client: WorkflowClient, taskQueue: string, router?: Router) {
+export function temporalioMiddleware(
+  workflows: any,
+  client: WorkflowClient,
+  taskQueue: string,
+  router?: Router
+) {
   if (router === undefined) {
     router = Router();
   }
-  
+
   for (const key of Object.keys(workflows)) {
     const value: any = workflows[key];
-    if (typeof value === 'function') {
+    if (typeof value === "function") {
       // Workflow
       createWorkflowEndpoint(router, client, key, value as Workflow, taskQueue);
-    } else if (typeof value === 'object' && value != null) {
-      if (value['type'] === 'signal') {
+    } else if (typeof value === "object" && value != null) {
+      if (value["type"] === "signal") {
         // Signal
-        createSignalEndpoint(router, client, value as SignalDefinition<unknown[]>);
-      } else if (value['type'] === 'query') {
+        createSignalEndpoint(
+          router,
+          client,
+          value as SignalDefinition<unknown[]>
+        );
+      } else if (value["type"] === "query") {
         // Query
-        createQueryEndpoint(router, client, value as QueryDefinition<unknown, unknown[]>);
+        createQueryEndpoint(
+          router,
+          client,
+          value as QueryDefinition<unknown, unknown[]>
+        );
+      } else if (value["type"] === "update") {
+        // Query
+        createUpdateEndpoint(
+          router,
+          client,
+          value as UpdateDefinition<unknown, []>
+        );
       }
     }
   }
@@ -33,50 +58,118 @@ export function createExpressMiddleware(workflows: any, client: WorkflowClient, 
   return router;
 }
 
-function createWorkflowEndpoint(router: Router, client: WorkflowClient, name: string, fn: Workflow, taskQueue: string) {
-  router.post(`/workflow/${name}`, express.json(), function(req: express.Request, res: express.Response) {
-    const workflowId = v4();
-    const opts = {
-      taskQueue,
-      workflowId,
-      args: [req.body]
-    };
-    client.start(fn, opts).then(() => res.json({ workflowId }));
-  });
+function createWorkflowEndpoint(
+  router: Router,
+  client: WorkflowClient,
+  name: string,
+  fn: Workflow,
+  taskQueue: string
+) {
+  router.post(
+    `/workflow/${name}`,
+    express.json(),
+    function (req: express.Request, res: express.Response) {
+      const workflowId = req.body?.workflowId || `${name}_${v4()}`;
 
-  router.post(`/workflow/${name}/:workflowId`, express.json(), function(req: express.Request, res: express.Response) {
-    const workflowId = req.params.workflowId;
-    const opts = {
-      taskQueue,
-      workflowId,
-      args: [req.body]
-    };
-    client.start(fn, opts).then(() => res.json({ workflowId }));
-  });
-}
-
-function createSignalEndpoint(router: Router, client: WorkflowClient, signal: SignalDefinition<any[]>) {
-  router.put(`/signal/${signal.name}/:workflowId`, express.json(), function(req: express.Request, res: express.Response) {
-    let data = req.body;
-
-    let fn: Function | undefined = signalValidators.get(signal);
-    if (fn != null) {
-      data = fn(data);
+      const opts = {
+        taskQueue,
+        workflowId,
+        args: [req.body],
+      };
+      client.start(fn, opts).then(() => res.status(201).json({ workflowId }));
     }
-    
+  );
+
+  router.post(
+    `/workflow/${name}/:workflowId`,
+    express.json(),
+    function (req: express.Request, res: express.Response) {
+      const workflowId = req.params.workflowId;
+      const opts = {
+        taskQueue,
+        workflowId,
+        args: [req.body],
+      };
+
+      client
+        .start(fn, opts)
+        .then(() => res.json({ workflowId }))
+        .catch(defaultErrorHandlingMiddleware(req, res));
+    }
+  );
+}
+
+function createSignalEndpoint(
+  router: Router,
+  client: WorkflowClient,
+  signal: SignalDefinition<any[]>
+) {
+  router.put(
+    `/signal/${signal.name}/:workflowId`,
+    express.json(),
+    function (req: express.Request, res: express.Response) {
+      let data = req.body;
+
+      let fn: Function | undefined = signalValidators.get(signal);
+      if (fn != null) {
+        data = fn(data);
+      }
+
+      const handle = client.getHandle(req.params.workflowId);
+      handle
+        .signal(signal, req.body)
+        .then(() => res.json({ received: true }))
+        .catch(defaultErrorHandlingMiddleware(req, res));
+    }
+  );
+}
+
+function createQueryEndpoint(
+  router: Router,
+  client: WorkflowClient,
+  query: QueryDefinition<any, any[]>
+) {
+  router.get(`/query/${query.name}/:workflowId`, function (req, res) {
     const handle = client.getHandle(req.params.workflowId);
-    handle.signal(signal, req.body).
-      then(() => res.json({ received: true })).
-      catch(err => res.status(500).json({ message: err.message }));
+
+    handle
+      .query(query, req.query)
+      .then((result) => res.json({ result }))
+      .catch(defaultErrorHandlingMiddleware(req, res));
   });
 }
 
-function createQueryEndpoint(router: Router, client: WorkflowClient, query: QueryDefinition<any, any[]>) {
-  router.get(`/query/${query.name}/:workflowId`, function(req, res) {
-    const handle = client.getHandle(req.params.workflowId);
+function createUpdateEndpoint(
+  router: Router,
+  client: WorkflowClient,
+  update: UpdateDefinition<any, []>
+) {
+  router.post(
+    `/update/${update.name}/:workflowId`,
+    express.json(),
+    function (req: express.Request, res: express.Response) {
+      let data = req.body;
 
-    handle.query(query, req.query).
-      then(result => res.json({ result })).
-      catch(err => res.status(500).json({ message: err.message }));
-  });
+      const handle = client.getHandle(req.params.workflowId);
+
+      handle
+        .executeUpdate(update, data)
+        .then((result) => res.send(result))
+        .catch(defaultErrorHandlingMiddleware(req, res));
+      // TODO: Implement custom logic to handle errors
+    }
+  );
+}
+
+function defaultErrorHandlingMiddleware(
+  req: express.Request,
+  res: express.Response,
+  next?: express.NextFunction
+) {
+  return (err: any) => {
+    console.error(err);
+    return res
+      .status(err?.code || 500)
+      .json({ message: err.message, issues: err?.issues });
+  };
 }

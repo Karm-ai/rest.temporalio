@@ -1,16 +1,21 @@
 {
-  "extends": "@tsconfig/node16/tsconfig.json",
   "version": "4.4.2",
   "compilerOptions": {
-    "target": "es2020",
+    "target": "ES6",
     "declaration": true,
     "declarationMap": true,
     "esModuleInterop": true,
     "moduleResolution": "node",
     "sourceMap": true,
     "rootDir": "./src",
-    "outDir": "./lib"
+    "outDir": "./lib",
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": true
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ],
 }
