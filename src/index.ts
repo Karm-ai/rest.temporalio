@@ -144,7 +144,7 @@ function createUpdateEndpoint(
   client: WorkflowClient,
   update: UpdateDefinition<any, []>
 ) {
-  router.post(
+  router.patch(
     `/update/${update.name}/:workflowId`,
     express.json(),
     function (req: express.Request, res: express.Response) {

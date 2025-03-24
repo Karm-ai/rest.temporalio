@@ -1,6 +1,6 @@
 {
-  "name": "temporal-rest",
-  "version": "0.6.0",
+  "name": "@karmai-cloud/rest.temporalio",
+  "version": "0.6.1",
   "private": false,
   "main": "lib/index.js",
   "bugs": {
@@ -38,5 +38,23 @@
     "mocha": "9.1.4",
     "sinon": "12.0.1",
     "typescript": "^5.8.2"
-  }
+  },
+  "description": "Express middleware for calling Temporal.io using REST Api Calls",
+  "directories": {
+    "lib": "lib"
+  },
+  "keywords": [
+    "temporal",
+    "temporalio",
+    "temporal.io",
+    "temporal",
+    "rest",
+    "rest",
+    "api",
+    "express",
+    "middleware"
+  ],
+  "author": "mateustozoni",
+  "license": "ISC",
+  "types": "./lib/index.d.ts"
 }
