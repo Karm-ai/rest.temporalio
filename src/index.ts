@@ -29,6 +29,7 @@ export function temporalioMiddleware(
     if (typeof value === "function") {
       // Workflow
       createWorkflowEndpoint(router, client, key, value as Workflow, taskQueue);
+      cancelWorkflowEndpoint(router, client);
     } else if (typeof value === "object" && value != null) {
       if (value["type"] === "signal") {
         // Signal
@@ -77,6 +78,23 @@ function createWorkflowEndpoint(
         args: [req.body],
       };
       client.start(fn, opts).then(() => res.status(201).json({ workflowId }));
+    }
+  );
+
+  router.post(
+    `/workflow/${name}`,
+    express.json(),
+    function (req: express.Request, res: express.Response) {
+      const workflowId = req.body?.workflowId || `${name}_${v4()}`;
+
+      const opts = {
+        taskQueue,
+        workflowId,
+        args: [req.body],
+      };
+      client
+        .execute(fn, opts)
+        .then((response) => res.status(201).send(response));
     }
   );
 
@@ -161,6 +179,17 @@ function createUpdateEndpoint(
   );
 }
 
+function cancelWorkflowEndpoint(router: Router, client: WorkflowClient) {
+  router.delete(`/workflow/:workflowId`, function (req, res) {
+    const handle = client.getHandle(req.params.workflowId);
+
+    handle
+      .cancel()
+      .then(() => res.status(204).send())
+      .catch(defaultErrorHandlingMiddleware(req, res));
+  });
+}
+
 function defaultErrorHandlingMiddleware(
   req: express.Request,
   res: express.Response,
@@ -169,7 +198,7 @@ function defaultErrorHandlingMiddleware(
   return (err: any) => {
     console.error(err);
     return res
-      .status(err?.code || 500)
+      .status(err?.code > 200 && err?.code < 600 ? err.code : 500)
       .json({ message: err.message, issues: err?.issues });
   };
 }

@@ -1,6 +1,6 @@
 {
   "name": "@karmai-cloud/rest.temporalio",
-  "version": "0.6.1",
+  "version": "0.6.4",
   "private": false,
   "main": "lib/index.js",
   "bugs": {
@@ -15,8 +15,7 @@
     "build": "tsc --build",
     "build.watch": "tsc --build --watch",
     "prepublishOnly": "npm run build",
-    "test": "mocha lib/test/*.test.js",
-    "preinstall": "npm install --package-lock-only --ignore-scripts && npx npm-force-resolutions"
+    "test": "mocha lib/test/*.test.js"
   },
   "dependencies": {
     "@types/uuid": "8.x",
